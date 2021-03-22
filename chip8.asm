@@ -366,10 +366,6 @@ c8op01:
 	JPZ cls_c8							; Clear screen
 	CPIA 0xfd							; opcode_l == 0xfd?
     JPZ c8exit
-	CPIA 0x00							; opcode_l == 0x00?
-	JRNZP c8op02
-	RTN									; NOP, No Operation
-										; Use only for debugging, most c8 interpreters can't handle it
 c8op02:
 	JP c8op_unknown
 
@@ -611,26 +607,21 @@ c8opcodeA:								; Set I to nnn
 ; ============================================================================
 c8opcodeB:								; JP V0, addr - Jump to location nnn + V0
 										; Leaves I unchanged
-	LP C8REG_I+1						; I = I & 0x0fff
-	ANIM 0x0f
-	RA									; B = 0
+	EXAM								; chip-8 address to BA
+	ANIA 0x0f
 	EXAB
-	LP C8REGS
-	LDM									; A = V0
-	LIQ REG_A							; Exchange BA and chip-8 register I
-	LP C8REG_I
-	EXB	
-	LP C8REG_I
-	ADB									; I = I + V0, orig. I stays in BA
-	LIQ REG_A							; Exchange BA and chip-8 register I
-	LP C8REG_I
-	EXB
-	LP REG_B							; overflow detection
-	TSIM 0xf0
-	JPNZ c8op_access_violation
 	LIQ REG_A							; BA to program counter
 	LP C8PROG_CTR
-	MVB		
+	MVB
+	RA
+	EXAB								; B = 0
+	LP C8REGS
+	LDM									; A = V0
+	LP C8PROG_CTR
+	ADB									; Add BA (= V0) to program counter
+	LP C8PROG_CTR+1						; overflow detection
+	TSIM 0xf0
+	JPNZ c8op_access_violation
 	RTN
 
 ; ============================================================================
@@ -1238,26 +1229,17 @@ c8exit_nostack:
 	;; until a key is pressed (power saving)
 	;; -----------------------------------------------
 c8_kbread_and_idle:
-;	LP REG_N+1					; (0x0c)
-;	ORIM 0xff
-;kbread_loop2:
-; 	CALL keyboard_raw_inkey
-;	JRCP kbread_exit
-;	LP REG_N+1					; (0x0c)
-;	SBIM 1
-;	JRNZM kbread_loop2
-kbread_loop:
 	CALL keyboard_raw_inkey
 	JRCP kbread_exit
 	LP C8DEL_TIMER
 	TSIM 0xff
-	JRNZM kbread_loop			; Don't idle if delay timer != 0
+	JRNZM c8_kbread_and_idle	; Don't idle if delay timer != 0
 	LP C8SND_TIMER
 	TSIM 0xff
-	JRNZM kbread_loop			; Don't idle if sound timer != 0
+	JRNZM c8_kbread_and_idle	; Don't idle if sound timer != 0
 	KBD_SET_KB
 	KBD_IDLE
-	JRM kbread_loop
+	JRM c8_kbread_and_idle
 kbread_exit:
 	RTN
 
